@@ -11,6 +11,7 @@ assistant thinking (EN) ──► line-level  llama.cpp (127.0.0.1:9911)  ──
 
 - **逐行实时翻译**：thinking 流式生成时按行预翻译，已完结的行尽快替换成中文；正文 / toolCall 原样不动。
 - **全本地**：模型在你自己机器上跑，thinking 内容不出本机。
+- **GPU 加速**：llama-server 以 `--flash-attn on` 启动，自动走 Apple Metal；典型 RSS ~1.5–2.3GB（纯 CPU 模式会到 ~4.2GB 并占满 CPU）。
 - **多实例共享**：多个 pi 窗口 / agent 共享一个 llama-server（文件锁引用计数），不重复拉起、最后一个退出才停止。
 - **命令控制**：`/translate on|off|status`。
 - **轻量安全**：`max_tokens ≤ 256`、`enable_thinking=false` 硬开关、行级去重、30s 重启冷却。

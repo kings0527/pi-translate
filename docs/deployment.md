@@ -26,6 +26,7 @@ pi-translate 是一个 [pi coding-agent](https://github.com/earendil-works) 的*
 # 方式 A：下载 release / 编译
 # 方式 B：已有 llama.cpp 构建
 llama-server --version   # b10796+ 支持 --parallel --cont-batching --log-disable
+# 扩展自动以 --flash-attn on 启动（Apple Metal 后端，内存 ~2GB 而非 CPU 模式 ~4.2GB）
 
 # 翻译模型（放 ~/，扩展默认路径 ~/hy-mt2-1.8b-q4km.gguf）
 curl -L -o ~/hy-mt2-1.8b-q4km.gguf \
@@ -87,7 +88,7 @@ cp ~/.pi/agent/extensions/pi-translate.ts.bak-<版本> ~/.pi/agent/extensions/pi
 | 症状 | 检查 |
 |---|---|
 | 不翻译 | `/translate status`；`curl :9911/health`；是否已 `/reload`（扩展非热加载） |
-| 服务 CPU 高 | `ps aux | grep llama-server`；单实例 + `--parallel 2` 通常 <10%（M4 Pro）；长期高 → 看是否有旧 pi 实例残留（旧代码风暴） |
+| 服务 CPU 高 | 确认服务带 `--flash-attn on`（Metal）；若是旧 CPU 模式（RSS>4GB）→ 重启服务；`ps aux \| grep llama-server` 查旧 pi 实例残留 |
 | 卡在英文 / 只翻前几行 | 已定稿消息尾行译文需自然重渲染才回填（宽度变化/下条消息）——见 ADR-0001 |
 | 退出后服务仍驻留 | 已知缺陷（launcher PID 记账）：手动 `kill $(cat ~/.pi/agent/pi-translate-locks/server.pid)`，或直接 pkill llama-server —— 见 ADR-0003 |
 | 长行译文被截断 | 已知限制（256 token 上限）——见 README Known limitations |
