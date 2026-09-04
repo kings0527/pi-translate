@@ -65,7 +65,7 @@ node benchmarks/bench.mjs                      # 端到端基准（可选）
 | 第二个 pi 窗口启动 | `session_start` → 探测到 9911 已在线 → 只加锁复用，不起新服务 |
 | 子代理（`--mode json -p`） | 加载扩展但无 TUI → 不触发 transformer → 不翻译、不空转 |
 | 某窗口退出 | 释放自身锁；仍有活跃实例 → 不杀服务 |
-| 最后一个窗口退出 | `reapStaleLocks()==0` → SIGTERM 服务 |
+| 最后一个窗口退出 | `reapStaleLocks()==0` → SIGTERM 端口监听者真 PID（杀前校验进程身份） |
 | 服务崩溃 | 看门狗（30s 冷却）自动重启；重启失败在 footer 提示，不静默 |
 
 锁目录：`~/.pi/agent/pi-translate-locks/`（`lock-<pid>.json` + `server.pid`）。异常退出留下死锁会被 `reapStaleLocks()` 下次清理。
@@ -89,6 +89,6 @@ cp ~/.pi/agent/extensions/pi-translate.ts.bak-<版本> ~/.pi/agent/extensions/pi
 |---|---|
 | 不翻译 | `/translate status`；`curl :9911/health`；是否已 `/reload`（扩展非热加载） |
 | 服务 CPU 高 | 确认服务带 `--flash-attn on`（Metal）；若是旧 CPU 模式（RSS>4GB）→ 重启服务；`ps aux \| grep llama-server` 查旧 pi 实例残留 |
-| 卡在英文 / 只翻前几行 | 已定稿消息尾行译文需自然重渲染才回填（宽度变化/下条消息）——见 ADR-0001 |
-| 退出后服务仍驻留 | 已知缺陷（launcher PID 记账）：手动 `kill $(cat ~/.pi/agent/pi-translate-locks/server.pid)`，或直接 pkill llama-server —— 见 ADR-0003 |
+| 卡在英文 / 只翻前几行 | v6 已修复：message_end 有界等待替换尾行（≤3s）；若仍见英文，检查是否已 `/reload` |
+| 退出后服务仍驻留 | v6 已修复（端口监听者 PID + 杀前身份校验）；异常时手动 `pkill -f 'llama-server.*9911'` |
 | 长行译文被截断 | 已知限制（256 token 上限）——见 README Known limitations |

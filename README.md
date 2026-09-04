@@ -9,7 +9,7 @@ assistant thinking (EN) ──► line-level  llama.cpp (127.0.0.1:9911)  ──
 
 ## Features / 特性
 
-- **逐行实时翻译**：thinking 流式生成时按行预翻译，已完结的行尽快替换成中文；正文 / toolCall 原样不动。
+- **逐行实时翻译**：thinking 流式生成时按行预翻译，已完结的行尽快替换成中文；正文 / toolCall / **围栏代码块**原样不动。
 - **全本地**：模型在你自己机器上跑，thinking 内容不出本机。
 - **GPU 加速**：llama-server 以 `--flash-attn on` 启动，自动走 Apple Metal；典型 RSS ~1.5–2.3GB（纯 CPU 模式会到 ~4.2GB 并占满 CPU）。
 - **多实例共享**：多个 pi 窗口 / agent 共享一个 llama-server（文件锁引用计数），不重复拉起、最后一个退出才停止。
@@ -61,11 +61,12 @@ cp pi-translate.ts ~/.pi/agent/extensions/
 ## Architecture / 架构简介
 
 - `registerMarkdownTransformer`（display-only 同步钩子）在每次渲染 thinking 时执行：
-  - 流式帧：对**已完结的行**发起翻译请求（fire-and-forget，`inFlight` 去重防重复请求）；
+  - 流式帧：对**已完结的非围栏行**发起翻译请求（fire-and-forget，`inFlight` 去重 + 客户端并发上限 8）；
   - 终结帧：对全部行发起并主动刷一帧；
-  - 缓存命中（`lineCache`，200 条 FIFO）直接原地替换为中文。
+  - 缓存命中（`lineCache`，200 条 FIFO）直接原地替换为中文；**fenced code blocks（```）整块保护，不翻译不替换**。
 - 翻译完成回调调用 `triggerRefresh()`（`setWidget` nudge → `requestRender`），让新译文尽快进入下一渲染帧。
-- 服务生命周期：文件锁 `~/.pi/agent/pi-translate-locks/` + `server.pid`，`reapStaleLocks()` 清理死锁。
+- **message_end 有界等待替换（v6）**：消息定稿后扫描 thinking 中仍无译文的行，最多等待 3s（流式预翻译已覆盖绝大部分，通常 <300ms）拿到译文即返回同 role 替换消息 → 首次正式渲染与 session 持久化即为中文；无变化/无 UI（subagent json 模式）零开销跳过。详见 [ADR-0001](docs/adr/ADR-0001-display-only-transformer.md)。
+- 服务生命周期：文件锁 `~/.pi/agent/pi-translate-locks/` + `server.pid`（端口真实监听者 PID），`reapStaleLocks()` 清理死锁；SIGTERM 前校验进程身份。
 - **设计取舍**：扩展只改显示（display-only），session 持久化与模型上下文里 thinking 保持英文原文，上下文零污染；代价是**已定稿消息的尾行译文依赖下一次自然重渲染**（宽度变化 / 下一条消息 / 恢复会话 / hide-thinking 切换）才回填。详见 [ADR-0001](docs/adr/ADR-0001-display-only-transformer.md)。
 
 ## Benchmark / 基准
@@ -85,9 +86,10 @@ cp pi-translate.ts ~/.pi/agent/extensions/
 ## Known limitations / 已知限制
 
 1. **超长行截断**：单行超过模型 256-token 输出预算会被截断（见上表）。
-2. **已定稿消息不回填**：终结帧后异步完成的译文，需下一次自然重渲染才显示（见 ADR-0001）。
-3. **`server.pid` 进程记账缺陷**：llama.cpp launcher 会先以父 PID 退出、再拉起真正的 worker；当前实现对 launcher 场景可能把已死的 PID 写入 `server.pid`，最后一个 pi 退出后服务可能孤儿驻留（见 [ADR-0003](docs/adr/ADR-0003-shared-server-lifecycle.md)）。
-4. **跨实例缓存不共享**：每进程 LRU，多实例可能重复翻译同一行（浪费极小，不改正确性）。
+2. ~~已定稿消息不回填~~ **已修复（v6）**：`message_end` 有界等待（≤3s）后替换定稿消息，尾行译文随首次正式渲染/持久化直接上屏；超时未完成的行仍走自然重渲染回填。见 [ADR-0001](docs/adr/ADR-0001-display-only-transformer.md)。
+3. ~~`server.pid` 进程记账缺陷~~ **已修复（v6）**：`server.pid` 改记端口 9911 真实监听者 PID（launcher 场景轮询获取），SIGTERM 前校验进程命令行含 `llama-server` 防 PID 复用误杀。见 [ADR-0003](docs/adr/ADR-0003-shared-server-lifecycle.md)。
+4. **跨实例缓存不共享**：每进程 FIFO（200 条），多实例可能重复翻译同一行（浪费极小，不改正确性）。
+5. **thinking 内 fenced code blocks（```）不翻译**：设计行为，代码原样保留；流式期围栏未闭合时，其后行锁定到下一帧。
 
 ## Documents / 文档
 
