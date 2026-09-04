@@ -103,7 +103,7 @@ async function ensureServer(ctx: UICtx): Promise<void> {
   if (await probeHealth()) { serverUp = true; serverOwnedByUs = false; return; }
   if (!existsSync(MODEL) || !existsSync(LLAMA_SERVER)) { serverUp = false; ctx.ui.notify(`pi-translate: 缺少模型或 llama-server（${MODEL}）`, "error"); return; }
   ctx.ui.notify("pi-translate: 启动翻译服务…", "info");
-  const proc = spawn(LLAMA_SERVER, ["--model", MODEL, "--alias", "qwen3-translate", "--port", "9911", "--host", "127.0.0.1", "--ctx-size", "4096", "--threads", "4", "--parallel", "2", "--cont-batching", "--no-warmup", "--log-disable"], { stdio: "ignore", detached: false });
+  const proc = spawn(LLAMA_SERVER, ["--model", MODEL, "--alias", "qwen3-translate", "--port", "9911", "--host", "127.0.0.1", "--ctx-size", "4096", "--threads", "4", "--parallel", "2", "--cont-batching", "--no-warmup", "--log-disable", "--flash-attn", "on"], { stdio: "ignore", detached: false });
   serverProc = proc; serverOwnedByUs = true; writeFileSync(SERVER_PID_FILE, JSON.stringify({ pid: proc.pid }));
   proc.on("exit", () => { if (serverProc === proc) { serverProc = null; serverUp = false; } }); proc.on("error", () => { if (serverProc === proc) serverUp = false; });
   for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 500)); if (await probeHealth(1000)) { serverUp = true; ctx.ui.notify("pi-translate: 翻译服务已就绪", "info"); return; } }
